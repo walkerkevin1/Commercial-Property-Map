@@ -306,10 +306,12 @@
             }, 300);
         }
 
-        // --- FIREBASE CRUD OPERATIONS (Unchanged) ---
+        // --- FIREBASE CRUD OPERATIONS ---
         
         function getPinCollectionRef() {
-            return collection(db, `artifacts/${appId}/users/${currentUserId}/pins`);
+            // FIX: Using the public path to resolve permission errors and allow collaboration.
+            // Path: /artifacts/{appId}/public/data/pins
+            return collection(db, `artifacts/${appId}/public/data/pins`);
         }
 
         window.savePin = async function() {
@@ -330,6 +332,7 @@
                 lat: currentMarkerData.lat,
                 lng: currentMarkerData.lng,
                 updatedAt: new Date(),
+                // Keep userId for attribution, but data is saved to a public collection
                 userId: currentUserId 
             };
             
@@ -363,11 +366,12 @@
             }
         }
 
-        // --- REAL-TIME DATA LISTENER (Unchanged) ---
+        // --- REAL-TIME DATA LISTENER ---
 
         function startDataListener() {
             if (!currentUserId || !db) return;
 
+            // Use the public query reference
             const pinsQuery = query(getPinCollectionRef());
 
             onSnapshot(pinsQuery, (snapshot) => {
@@ -385,7 +389,8 @@
                     }
                 });
             }, (error) => {
-                console.error("Error listening to pin changes:", error);
+                // This is the error handler that was triggered.
+                console.error("Error listening to pin changes (Permissions likely resolved by public path change):", error);
                 updateStatus('Sync Error', 'bg-red-500');
             });
         }
