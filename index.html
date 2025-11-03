@@ -314,7 +314,7 @@
         
         // --- ADDRESS SEARCH (GEOCODING) ---
         // Expose globally so it can be called by the event listener 
-        async function searchAddress() { // Removed window. prefix
+        async function searchAddress() { 
             const query = document.getElementById('address-search-input').value.trim();
             if (!query) return;
             
@@ -325,7 +325,7 @@
 
             try {
                 const searchUrl = NOMINATIM_URL + encodeURIComponent(query);
-                console.log("Nominatim Query URL:", searchUrl); // Log the full URL
+                console.log("Nominatim Query URL:", searchUrl); 
                 const response = await fetch(searchUrl);
                 if (!response.ok) throw new Error("Search API failed with status: " + response.status);
 
@@ -357,7 +357,7 @@
 
         
         // --- MANUAL PIN DROP MODE TOGGLE ---
-        function toggleManualPinMode() { // Removed window. prefix
+        function toggleManualPinMode() { 
             setManualDropMode(!isManualDropMode);
         }
         
@@ -424,7 +424,7 @@
 
         // --- MODAL HANDLING ---
 
-        function openModal(pinData = null) { // Removed window. prefix
+        function openModal(pinData = null) { 
             const modal = document.getElementById('pin-modal');
             const nameInput = document.getElementById('property-name');
             const statusSelect = document.getElementById('property-status');
@@ -471,7 +471,7 @@
             }, 50); 
         }
 
-        function closeModal() { // Removed window. prefix
+        function closeModal() { 
             const modal = document.getElementById('pin-modal');
             modal.querySelector('div').classList.add('scale-95', 'opacity-0');
             setTimeout(() => {
@@ -495,9 +495,10 @@
             return collection(db, `artifacts/${appId}/public/data/pins`);
         }
 
-        async function savePin() { // Removed window. prefix
+        async function savePin() { 
             if (!currentUserId || !db || !currentMarkerData.lat || !currentMarkerData.lng) {
                 console.error("Authentication, database, or coordinates not ready. Cannot save pin.");
+                updateStatus('Save Failed: Missing Auth/Coordinates', 'bg-red-700');
                 return;
             }
 
@@ -516,21 +517,27 @@
                 userId: currentUserId 
             };
             
+            console.log("Attempting to save pin:", pinData); // ADDED: Log attempt
+
             try {
                 if (pinId) {
                     const pinDocRef = doc(getPinCollectionRef(), pinId);
                     await updateDoc(pinDocRef, pinData);
+                    updateStatus('Pin updated successfully!', 'bg-green-600'); // ADDED: Success status
                 } else {
                     await addDoc(getPinCollectionRef(), pinData);
+                    updateStatus('New pin saved successfully!', 'bg-green-600'); // ADDED: Success status
                 }
                 
                 closeModal();
             } catch (error) {
-                console.error("Error saving pin to Firestore (Check Security Rules!):", error);
+                // ADDED: Detailed error logging and status update for Firestore failure
+                console.error("FIREBASE ERROR: Failed to save/update pin.", error);
+                updateStatus('Save Failed: Check Console for Firebase Error', 'bg-red-700'); 
             }
         }
 
-        async function deletePin() { // Removed window. prefix
+        async function deletePin() { 
             const pinId = document.getElementById('pin-id').value;
             if (!pinId || !db) {
                 console.error("Pin ID or database not ready for deletion.");
@@ -541,8 +548,10 @@
                 const pinDocRef = doc(getPinCollectionRef(), pinId);
                 await deleteDoc(pinDocRef);
                 closeModal();
+                updateStatus('Pin deleted successfully!', 'bg-green-600');
             } catch (error) {
                 console.error("Error deleting pin from Firestore:", error);
+                updateStatus('Delete Failed: Check Console for Firebase Error', 'bg-red-700'); 
             }
         }
 
@@ -661,11 +670,11 @@
         function attachEventListeners() {
             // Primary UI Controls
             document.getElementById('search-btn').addEventListener('click', searchAddress); 
-            document.getElementById('manual-pin-btn').addEventListener('click', toggleManualPinMode); // FIXED: Manual Pin Button
+            document.getElementById('manual-pin-btn').addEventListener('click', toggleManualPinMode); 
 
-            // Modal Controls (FIXED: Save/Delete/Close Buttons)
+            // Modal Controls (Save/Delete/Close Buttons)
             document.getElementById('close-modal-btn').addEventListener('click', closeModal); 
-            document.getElementById('save-pin-btn').addEventListener('click', savePin);
+            document.getElementById('save-pin-btn').addEventListener('click', savePin); // Listener for savePin
             document.getElementById('delete-pin-btn').addEventListener('click', deletePin); 
             
             // Search Input 'Enter' Key
