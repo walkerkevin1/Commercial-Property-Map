@@ -133,25 +133,24 @@
         let userId = 'anonymous'; // Default user ID
         let isLocalMode = false; // Flag to indicate running without real Firebase
 
-        // --- MANDATORY CANVAS ENVIRONMENT VARIABLE HANDLING ---
-        // These are provided by the canvas environment for cloud functionality.
-        const MOCK_API_KEY = "AIzaSy_LOCAL_MOCK_KEY";
-        const defaultFirebaseConfig = { apiKey: MOCK_API_KEY }; // Minimal mock config
+        // --- START: MANUAL FIREBASE CONFIGURATION FOR GITHUB PAGES ---
+// Replace the placeholder values below with the config object copied from your new Firebase project.
+// This enables cloud syncing for your Mac and iPhone.
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const appId = 'default-app-id'; 
 
-        let firebaseConfig = defaultFirebaseConfig;
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-            try {
-                firebaseConfig = JSON.parse(__firebase_config);
-            } catch (e) {
-                console.warn("Could not parse __firebase_config. Using default mock config.");
-            }
-        }
-        
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        // --- END MANDATORY VARIABLE HANDLING ---
+const firebaseConfig = {
+    apiKey: "AIzaSyABT1nSD5liNMuVvAtmIw7sQAf_SJRuvCs",
+    authDomain: "commercial-property-map.firebaseapp.com",
+    projectId: "commercial-property-map",
+    storageBucket: "commercial-property-map.firebasestorage.app",
+    messagingSenderId: "486434169699",
+    appId: "1:486434169699:web:f0bb313ced152ca36b6956",
+};
 
+// We clear the initialAuthToken since we are outside the secure environment.
+const initialAuthToken = null; 
+// --- END: MANUAL FIREBASE CONFIGURATION FOR GITHUB PAGES ---
 
         // Map and Pin management variables
         let map;
