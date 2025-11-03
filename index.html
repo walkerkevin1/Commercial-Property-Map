@@ -33,6 +33,10 @@
             padding: 1rem;
             max-width: 300px !important;
         }
+        /* Fix cursor for map movement */
+        .leaflet-grab { cursor: grab; }
+        .leaflet-container { cursor: grab; }
+        .leaflet-dragging .leaflet-grab { cursor: grabbing; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans antialiased overflow-hidden">
@@ -117,10 +121,7 @@
         setLogLevel('Debug');
 
         // --- START: MANUAL FIREBASE CONFIGURATION (FINAL CORRECTED BLOCK) ---
-        // This configuration enables cloud syncing using your personal Firebase project.
-        // It replaces all Canvas environment variables.
-
-        const appId = 'default-app-id'; // Constant needed for the Firestore path
+        const appId = 'default-app-id'; 
 
         const firebaseConfig = {
             apiKey: "AIzaSyABT1nSD5liNMuVvAtmIw7sQAf_SJRuvCs",
@@ -132,7 +133,6 @@
             measurementId: "G-RGQL6TKEGK"
         };
 
-        // Setting the initial auth token to null forces the Anonymous Sign-In to run.
         const initialAuthToken = null; 
         // --- END: MANUAL FIREBASE CONFIGURATION (FINAL CORRECTED BLOCK) ---
 
@@ -165,11 +165,9 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Check if we have a custom token (from Canvas)
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
-                    // Fallback to anonymous sign-in for external hosting (GitHub Pages)
                     await signInAnonymously(auth);
                 }
                 
@@ -180,15 +178,14 @@
                         document.getElementById('user-id-display').textContent = currentUserId;
                         document.getElementById('app-id-display').textContent = appId;
                         
-                        // Proceed to map and data initialization only after successful authentication
                         if (!isMapInitialized) {
                             initMap();
                             startDataListener();
                         }
                     } else {
-                        console.error("User is not signed in.");
-                        document.getElementById('user-id-display').textContent = 'AUTH FAILED';
-                        // Re-attempt sign-in if needed, though onAuthStateChanged should handle it
+                        // Suppress this log as it often fires immediately before sign-in completes
+                        console.log("Waiting for user sign-in status..."); 
+                        document.getElementById('user-id-display').textContent = 'Authenticating...';
                     }
                 });
 
@@ -227,7 +224,9 @@
         function setupLeafletMap(lat, lng) {
             // 2. Initialize Leaflet map
             map = L.map('map', { 
-                zoomControl: false // Disable default zoom control
+                zoomControl: false, 
+                contextmenu: true, 
+                contextmenuItems: [] 
             }).setView([lat, lng], 13);
             
             // Add custom zoom control for better mobile UX
@@ -249,6 +248,10 @@
         }
         
         function onMapClick(e) {
+            if (e.originalEvent && e.originalEvent.button === 2) {
+                return; 
+            }
+            
             // Set temporary pin location data
             currentMarkerData.lat = e.latlng.lat;
             currentMarkerData.lng = e.latlng.lng;
@@ -290,6 +293,12 @@
                 currentMarkerData.lng = pinData.lng;
 
                 deleteBtn.classList.remove('hidden');
+            } else {
+                 // For a new pin, ensure location is set (from onMapClick or add button)
+                 if (!currentMarkerData.lat || !currentMarkerData.lng) {
+                     console.error("Attempted to open modal without valid coordinates.");
+                     return;
+                 }
             }
 
             // Display and animate modal
@@ -317,6 +326,7 @@
         
         function getPinCollectionRef() {
             // Firestore path: /artifacts/{appId}/users/{userId}/pins
+            // This is a dynamic path based on the authenticated user's ID
             return collection(db, `artifacts/${appId}/users/${currentUserId}/pins`);
         }
 
@@ -353,8 +363,8 @@
                 
                 closeModal();
             } catch (error) {
-                console.error("Error saving pin to Firestore:", error);
-                // Simple visual feedback for the user instead of alert()
+                // The permission error will likely occur here if rules aren't set
+                console.error("Error saving pin to Firestore (Check Security Rules!):", error);
                 document.getElementById('save-pin-btn').textContent = 'Save Failed!';
                 setTimeout(() => {
                     document.getElementById('save-pin-btn').textContent = 'Save Location';
@@ -375,7 +385,7 @@
                 await deleteDoc(pinDocRef);
                 closeModal();
             } catch (error) {
-                console.error("Error deleting pin from Firestore:", error);
+                console.error("Error deleting pin from Firestore (Check Security Rules!):", error);
             }
         }
 
@@ -404,7 +414,8 @@
                     }
                 });
             }, (error) => {
-                console.error("Error listening to pin changes:", error);
+                // This is where the Missing or insufficient permissions error is logged.
+                console.error("Error listening to pin changes: Error: Missing or insufficient permissions. >>> You MUST update your Firebase Security Rules! <<<", error);
             });
         }
         
@@ -424,7 +435,7 @@
         function createPopupContent(pin) {
             const color = getStatusColor(pin.status);
             const notesHtml = pin.notes ? `<p class="mt-2 text-sm text-gray-700 whitespace-pre-wrap">${pin.notes}</p>` : '';
-            const statusHtml = `<span class="inline-block px-3 py-1 text-xs font-semibold text-white bg-${color}-500 rounded-full">${pin.status}</span>`;
+            const statusHtml = `<span class="inline-block px-3 py-1 text-xs font-semibold text-white bg-${color}-600 rounded-full">${pin.status}</span>`; // Changed to 600 for better contrast
             
             const content = `
                 <div class="p-3">
@@ -442,11 +453,17 @@
 
             const color = getStatusColor(pin.status);
             
+            // Custom pin icon definition
             const customIcon = L.divIcon({
                 className: 'custom-div-icon',
-                html: `<div class="bg-${color}-500 w-6 h-6 rounded-full border-4 border-white shadow-md transform rotate-45 relative bottom-3"></div>`,
-                iconAnchor: [12, 24],
-                popupAnchor: [0, -15]
+                // Use a standard location pin design for clarity
+                html: `<div class="bg-${color}-600 w-5 h-5 rounded-full border-3 border-white shadow-lg flex items-center justify-center text-white font-bold" style="transform: rotate(45deg); border-width: 3px; position: relative; bottom: 10px;">
+                        <svg class="h-4 w-4 transform -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z"/>
+                        </svg>
+                       </div>`,
+                iconAnchor: [12, 24], // Position anchor for the icon base
+                popupAnchor: [0, -25]
             });
 
             const marker = L.marker([pin.lat, pin.lng], { icon: customIcon }).addTo(map);
@@ -463,13 +480,17 @@
                 return;
             }
 
-            // Update marker icon color if needed
+            // Update marker icon color and popup content
             const color = getStatusColor(pin.status);
             const customIcon = L.divIcon({
                 className: 'custom-div-icon',
-                html: `<div class="bg-${color}-500 w-6 h-6 rounded-full border-4 border-white shadow-md transform rotate-45 relative bottom-3"></div>`,
+                 html: `<div class="bg-${color}-600 w-5 h-5 rounded-full border-3 border-white shadow-lg flex items-center justify-center text-white font-bold" style="transform: rotate(45deg); border-width: 3px; position: relative; bottom: 10px;">
+                        <svg class="h-4 w-4 transform -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z"/>
+                        </svg>
+                       </div>`,
                 iconAnchor: [12, 24],
-                popupAnchor: [0, -15]
+                popupAnchor: [0, -25]
             });
             markerEntry.marker.setIcon(customIcon);
             
@@ -497,8 +518,9 @@
             }
         }
         
-        // --- BUTTON HANDLERS ---
-        document.getElementById('add-pin-btn').addEventListener('click', () => {
+        // --- BUTTON HANDLERS (The Fix) ---
+        document.getElementById('add-pin-btn').addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent map click handler from interfering
             // Set temporary location to map center when using the button
             const center = map.getCenter();
             currentMarkerData.lat = center.lat;
@@ -506,8 +528,7 @@
             openModal();
         });
 
-
-        // --- ENTRY POINT ---
+        // Set up the map initialization on window load
         window.onload = function () {
             initFirebase();
         }
