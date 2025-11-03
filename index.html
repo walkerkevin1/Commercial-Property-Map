@@ -13,9 +13,10 @@
         #map {
             height: 100vh;
             width: 100vw;
-            /* Ensure the map is full screen and centered */
+            /* Ensure map is below status bar and button but above footer */
+            z-index: 10; 
         }
-        /* Style for the custom modal backdrop */
+        /* Modal Backdrop */
         .modal-backdrop {
             background-color: rgba(0, 0, 0, 0.6);
         }
@@ -23,9 +24,9 @@
         .card-shadow {
             box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-        /* Custom popup content styling */
+        /* Popup Styling */
         .leaflet-popup-content-wrapper {
-            border-radius: 0.5rem; /* rounded-lg */
+            border-radius: 0.5rem; 
             padding: 0;
         }
         .leaflet-popup-content {
@@ -33,32 +34,31 @@
             padding: 1rem;
             max-width: 300px !important;
         }
-        /* Fix cursor for map movement */
-        .leaflet-grab { cursor: grab; }
-        .leaflet-container { cursor: grab; }
-        .leaflet-dragging .leaflet-grab { cursor: grabbing; }
+        /* Ensure cursor remains drag-friendly on map (Critical fix) */
+        .leaflet-grab { cursor: grab !important; }
+        .leaflet-container { cursor: grab !important; }
+        .leaflet-dragging .leaflet-grab { cursor: grabbing !important; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans antialiased overflow-hidden">
 
-    <!-- Loading Overlay -->
+    <!-- Loading Overlay (Z-Index 50) -->
     <div id="loading-overlay" class="fixed inset-0 bg-white flex flex-col items-center justify-center z-50 transition-opacity duration-500">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-        <p class="mt-4 text-lg font-semibold text-indigo-700">Initializing Map & Cloud Sync...</p>
-        <p class="text-sm text-gray-500">Connecting to database and authenticating...</p>
+        <p id="loading-message" class="mt-4 text-lg font-semibold text-indigo-700">Initializing Map & Cloud Sync...</p>
     </div>
 
     <!-- Main Map Container -->
     <div id="map"></div>
 
-    <!-- Floating Add Button -->
-    <button id="add-pin-btn" class="fixed bottom-6 right-6 p-4 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition duration-300 transform hover:scale-105 z-40 focus:outline-none focus:ring-4 focus:ring-indigo-300">
+    <!-- Floating Add Button - MOVED TO TOP RIGHT (Z-INDEX 1000) -->
+    <button id="add-pin-btn" class="fixed top-6 right-6 p-4 bg-indigo-600 text-white rounded-full shadow-xl hover:bg-indigo-700 transition duration-300 transform hover:scale-105 z-[1000] focus:outline-none focus:ring-4 focus:ring-indigo-300">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
         </svg>
     </button>
 
-    <!-- Pin Detail Modal -->
+    <!-- Pin Detail Modal (Z-Index 50) -->
     <div id="pin-modal" class="modal-backdrop fixed inset-0 hidden items-center justify-center z-50 transition-opacity duration-300">
         <div class="bg-white rounded-xl overflow-hidden card-shadow w-11/12 max-w-lg mx-auto transform transition-transform duration-300 scale-95 opacity-0">
             
@@ -105,36 +105,42 @@
         </div>
     </div>
     
-    <!-- User Info Footer -->
-    <div class="fixed bottom-0 left-0 right-0 bg-white/70 backdrop-blur-sm p-1 text-xs text-gray-500 flex justify-center z-30">
-        User ID: <span id="user-id-display" class="font-mono ml-2">Loading...</span> | Cloud App: <span id="app-id-display" class="font-mono ml-2">Loading...</span>
+    <!-- User Info Footer / Status Bar (Z-Index 40) -->
+    <div class="fixed bottom-0 left-0 right-0 p-1 text-xs flex justify-between items-center z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200">
+        <!-- Status Indicator -->
+        <div id="status-indicator" class="px-2 py-1 rounded-full text-white font-medium ml-2">
+            Loading...
+        </div>
+        
+        <!-- User ID Info -->
+        <div class="text-gray-500 flex items-center mr-2">
+            User ID: <span id="user-id-display" class="font-mono ml-2">Loading...</span> | Cloud App: <span id="app-id-display" class="font-mono ml-2">Loading...</span>
+        </div>
     </div>
 
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Enable Firebase Firestore debugging (optional, but good for troubleshooting)
         setLogLevel('Debug');
 
-        // --- START: MANUAL FIREBASE CONFIGURATION (FINAL CORRECTED BLOCK) ---
-        const appId = 'default-app-id'; 
+        // --- START: FIREBASE CONFIGURATION ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyABT1nSD5liNMuVvAtmIw7sQAf_SJRuvCs",
-            authDomain: "commercial-property-map.firebaseapp.com",
-            projectId: "commercial-property-map",
-            storageBucket: "commercial-property-map.firebasestorage.app",
-            messagingSenderId: "486434169699",
-            appId: "1:486434169699:web:f0bb313ced152ca36b6956",
-            measurementId: "G-RGQL6TKEGK"
+        const defaultFirebaseConfig = {
+            apiKey: "AIzaSy_LOCAL_MOCK_KEY", 
+            authDomain: "local-app.firebaseapp.com",
+            projectId: "local-project-id",
+            storageBucket: "local-storage.appspot.com",
+            messagingSenderId: "1234567890",
+            appId: "1:1234567890:web:localwebid"
         };
-
-        const initialAuthToken = null; 
-        // --- END: MANUAL FIREBASE CONFIGURATION (FINAL CORRECTED BLOCK) ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- END: FIREBASE CONFIGURATION ---
 
         // Initialize App and Services
         let app;
@@ -144,9 +150,8 @@
         let currentUserId = null;
         let markers = {}; 
 
-        // Initial map location (centered on a major US area as a fallback)
         const DEFAULT_LAT = 34.0522; 
-        const DEFAULT_LNG = -118.2437; // Los Angeles
+        const DEFAULT_LNG = -118.2437; 
 
         let currentMarkerData = {
             id: null,
@@ -157,6 +162,14 @@
         
         let isMapInitialized = false;
 
+        // --- UI STATUS UPDATER ---
+        function updateStatus(message, colorClass) {
+            const indicator = document.getElementById('status-indicator');
+            indicator.textContent = message;
+            indicator.className = `px-2 py-1 rounded-full text-white font-medium ml-2 ${colorClass}`;
+        }
+
+
         // --- FIREBASE INITIALIZATION AND AUTHENTICATION ---
 
         async function initFirebase() {
@@ -164,6 +177,8 @@
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                
+                updateStatus('Authenticating...', 'bg-indigo-500');
 
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
@@ -171,7 +186,6 @@
                     await signInAnonymously(auth);
                 }
                 
-                // Auth state listener setup
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         currentUserId = user.uid;
@@ -183,18 +197,14 @@
                             startDataListener();
                         }
                     } else {
-                        // Suppress this log as it often fires immediately before sign-in completes
-                        console.log("Waiting for user sign-in status..."); 
-                        document.getElementById('user-id-display').textContent = 'Authenticating...';
+                        updateStatus('Sign In Failed', 'bg-red-500');
                     }
                 });
 
             } catch (error) {
                 console.error("Error during Firebase initialization or sign-in:", error);
-                document.getElementById('loading-overlay').innerHTML = `
-                    <p class="text-xl text-red-600">Initialization Failed</p>
-                    <p class="mt-2 text-sm text-gray-600">Check console for error details.</p>
-                `;
+                document.getElementById('loading-message').textContent = 'Initialization Failed. Check console.';
+                updateStatus('Initialization Error', 'bg-red-500');
             }
         }
         
@@ -203,7 +213,6 @@
         function initMap() {
             if (isMapInitialized) return;
 
-            // 1. Try to get current geolocation
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const lat = position.coords.latitude;
@@ -211,8 +220,7 @@
                     setupLeafletMap(lat, lng);
                 },
                 (error) => {
-                    console.warn(`Geolocation failed or denied. Falling back to default location. ${error.name}`);
-                    // Fallback to default LA location
+                    console.warn(`Geolocation failed. Falling back to default. ${error.name}`);
                     setupLeafletMap(DEFAULT_LAT, DEFAULT_LNG);
                 },
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
@@ -222,45 +230,24 @@
         }
         
         function setupLeafletMap(lat, lng) {
-            // 2. Initialize Leaflet map
             map = L.map('map', { 
                 zoomControl: false, 
-                contextmenu: true, 
-                contextmenuItems: [] 
             }).setView([lat, lng], 13);
             
-            // Add custom zoom control for better mobile UX
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            // Add tile layer (using standard OpenStreetMap)
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             }).addTo(map);
-
-            // 3. Setup event listener for dropping new pins
-            map.on('click', onMapClick);
             
-            // Remove loading overlay now that map is drawn
+            // Remove loading overlay and update status
             const overlay = document.getElementById('loading-overlay');
             overlay.classList.add('opacity-0');
             setTimeout(() => { overlay.classList.add('hidden'); }, 500);
+            updateStatus('Map & Database Ready', 'bg-green-600');
         }
         
-        function onMapClick(e) {
-            if (e.originalEvent && e.originalEvent.button === 2) {
-                return; 
-            }
-            
-            // Set temporary pin location data
-            currentMarkerData.lat = e.latlng.lat;
-            currentMarkerData.lng = e.latlng.lng;
-            currentMarkerData.id = null; // New pin
-            
-            // Open modal to capture pin details
-            openModal();
-        }
-
         // --- MODAL HANDLING ---
 
         function openModal(pinData = null) {
@@ -294,14 +281,12 @@
 
                 deleteBtn.classList.remove('hidden');
             } else {
-                 // For a new pin, ensure location is set (from onMapClick or add button)
                  if (!currentMarkerData.lat || !currentMarkerData.lng) {
                      console.error("Attempted to open modal without valid coordinates.");
                      return;
                  }
             }
 
-            // Display and animate modal
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             setTimeout(() => {
@@ -315,7 +300,6 @@
             setTimeout(() => {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
-                // Reset temporary data after closing
                 currentMarkerData.id = null;
                 currentMarkerData.lat = null;
                 currentMarkerData.lng = null;
@@ -325,8 +309,7 @@
         // --- FIREBASE CRUD OPERATIONS ---
         
         function getPinCollectionRef() {
-            // Firestore path: /artifacts/{appId}/users/{userId}/pins
-            // This is a dynamic path based on the authenticated user's ID
+            // Path: /artifacts/{appId}/users/{userId}/pins
             return collection(db, `artifacts/${appId}/users/${currentUserId}/pins`);
         }
 
@@ -353,28 +336,20 @@
             
             try {
                 if (pinId) {
-                    // Update existing pin
                     const pinDocRef = doc(getPinCollectionRef(), pinId);
                     await updateDoc(pinDocRef, pinData);
                 } else {
-                    // Add new pin
                     await addDoc(getPinCollectionRef(), pinData);
                 }
                 
                 closeModal();
             } catch (error) {
-                // The permission error will likely occur here if rules aren't set
                 console.error("Error saving pin to Firestore (Check Security Rules!):", error);
-                document.getElementById('save-pin-btn').textContent = 'Save Failed!';
-                setTimeout(() => {
-                    document.getElementById('save-pin-btn').textContent = 'Save Location';
-                }, 2000);
             }
         }
 
         window.deletePin = async function() {
             const pinId = document.getElementById('pin-id').value;
-
             if (!pinId || !db) {
                 console.error("Pin ID or database not ready for deletion.");
                 return;
@@ -385,17 +360,14 @@
                 await deleteDoc(pinDocRef);
                 closeModal();
             } catch (error) {
-                console.error("Error deleting pin from Firestore (Check Security Rules!):", error);
+                console.error("Error deleting pin from Firestore:", error);
             }
         }
 
         // --- REAL-TIME DATA LISTENER ---
 
         function startDataListener() {
-            if (!currentUserId || !db) {
-                console.error("Cannot start listener: User ID or DB not available.");
-                return;
-            }
+            if (!currentUserId || !db) return;
 
             const pinsQuery = query(getPinCollectionRef());
 
@@ -414,8 +386,8 @@
                     }
                 });
             }, (error) => {
-                // This is where the Missing or insufficient permissions error is logged.
-                console.error("Error listening to pin changes: Error: Missing or insufficient permissions. >>> You MUST update your Firebase Security Rules! <<<", error);
+                console.error("Error listening to pin changes:", error);
+                updateStatus('Sync Error', 'bg-red-500');
             });
         }
         
@@ -423,19 +395,19 @@
         
         function getStatusColor(status) {
             switch(status) {
-                case 'Watching': return 'blue';
-                case 'Contacted': return 'orange';
-                case 'Offer Made': return 'red';
-                case 'Rejected': return 'gray';
-                case 'Purchased': return 'green';
-                default: return 'blue';
+                case 'Watching': return { color: '#3B82F6', tailwind: 'bg-blue-600' };
+                case 'Contacted': return { color: '#F97316', tailwind: 'bg-orange-600' };
+                case 'Offer Made': return { color: '#DC2626', tailwind: 'bg-red-600' };
+                case 'Rejected': return { color: '#6B7280', tailwind: 'bg-gray-600' };
+                case 'Purchased': return { color: '#10B981', tailwind: 'bg-green-600' };
+                default: return { color: '#3B82F6', tailwind: 'bg-blue-600' };
             }
         }
 
         function createPopupContent(pin) {
-            const color = getStatusColor(pin.status);
+            const statusInfo = getStatusColor(pin.status);
             const notesHtml = pin.notes ? `<p class="mt-2 text-sm text-gray-700 whitespace-pre-wrap">${pin.notes}</p>` : '';
-            const statusHtml = `<span class="inline-block px-3 py-1 text-xs font-semibold text-white bg-${color}-600 rounded-full">${pin.status}</span>`; // Changed to 600 for better contrast
+            const statusHtml = `<span style="background-color: ${statusInfo.color};" class="inline-block px-3 py-1 text-xs font-semibold text-white rounded-full">${pin.status}</span>`; 
             
             const content = `
                 <div class="p-3">
@@ -448,28 +420,28 @@
             return content;
         }
 
-        function addMarker(pin) {
-            if (markers[pin.id]) return; // Already exists
-
-            const color = getStatusColor(pin.status);
-            
-            // Custom pin icon definition
-            const customIcon = L.divIcon({
+        function createCustomIcon(color) {
+            return L.divIcon({
                 className: 'custom-div-icon',
-                // Use a standard location pin design for clarity
-                html: `<div class="bg-${color}-600 w-5 h-5 rounded-full border-3 border-white shadow-lg flex items-center justify-center text-white font-bold" style="transform: rotate(45deg); border-width: 3px; position: relative; bottom: 10px;">
+                html: `<div style="background-color: ${color}; border-color: white; transform: rotate(45deg); border-width: 3px; position: relative; bottom: 10px;" class="w-5 h-5 rounded-full shadow-lg flex items-center justify-center text-white font-bold">
                         <svg class="h-4 w-4 transform -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z"/>
                         </svg>
                        </div>`,
-                iconAnchor: [12, 24], // Position anchor for the icon base
+                iconAnchor: [12, 24],
                 popupAnchor: [0, -25]
             });
+        }
+
+        function addMarker(pin) {
+            if (markers[pin.id]) return;
+
+            const color = getStatusColor(pin.status).color;
+            const customIcon = createCustomIcon(color);
 
             const marker = L.marker([pin.lat, pin.lng], { icon: customIcon }).addTo(map);
             marker.bindPopup(createPopupContent(pin));
             
-            // Store marker and data
             markers[pin.id] = { marker, pin };
         }
 
@@ -480,24 +452,10 @@
                 return;
             }
 
-            // Update marker icon color and popup content
-            const color = getStatusColor(pin.status);
-            const customIcon = L.divIcon({
-                className: 'custom-div-icon',
-                 html: `<div class="bg-${color}-600 w-5 h-5 rounded-full border-3 border-white shadow-lg flex items-center justify-center text-white font-bold" style="transform: rotate(45deg); border-width: 3px; position: relative; bottom: 10px;">
-                        <svg class="h-4 w-4 transform -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z"/>
-                        </svg>
-                       </div>`,
-                iconAnchor: [12, 24],
-                popupAnchor: [0, -25]
-            });
-            markerEntry.marker.setIcon(customIcon);
+            const color = getStatusColor(pin.status).color;
+            markerEntry.marker.setIcon(createCustomIcon(color));
             
-            // Update the popup content
             markerEntry.marker.setPopupContent(createPopupContent(pin));
-
-            // Update stored data
             markerEntry.pin = pin;
         }
 
@@ -512,25 +470,43 @@
             const pinId = el.getAttribute('data-pin-id');
             const pinData = markers[pinId]?.pin;
             if (pinData) {
-                // Close popup before opening modal
                 map.closePopup(); 
                 openModal(pinData);
             }
         }
         
-        // --- BUTTON HANDLERS (The Fix) ---
-        document.getElementById('add-pin-btn').addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent map click handler from interfering
-            // Set temporary location to map center when using the button
-            const center = map.getCenter();
-            currentMarkerData.lat = center.lat;
-            currentMarkerData.lng = center.lng;
-            openModal();
-        });
+        // --- FLOATING ADD BUTTON HANDLER ---
+        function attachEventListeners() {
+            const addButton = document.getElementById('add-pin-btn');
 
-        // Set up the map initialization on window load
+            if (!addButton) {
+                console.error("Add Pin Button element not found in DOM.");
+                return;
+            }
+
+            addButton.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                console.log("Floating Add Button clicked. Attempting to open modal.");
+                
+                if (!map) {
+                    console.error("Map object is not initialized yet. Cannot get center.");
+                    updateStatus('Map Not Ready', 'bg-yellow-500');
+                    return; 
+                }
+                
+                // Use the current map center for the pin location
+                const center = map.getCenter();
+                currentMarkerData.lat = center.lat;
+                currentMarkerData.lng = center.lng;
+                currentMarkerData.id = null;
+                openModal();
+            });
+        }
+
+        // Set up the app initialization on window load
         window.onload = function () {
             initFirebase();
+            attachEventListeners(); // Attach event listeners immediately after window loads
         }
 
     </script>
