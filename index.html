@@ -13,7 +13,6 @@
         #map {
             height: 100vh;
             width: 100vw;
-            /* Ensure map is below status bar and button but above footer */
             z-index: 10; 
         }
         /* Modal Backdrop */
@@ -51,7 +50,7 @@
     <!-- Main Map Container -->
     <div id="map"></div>
 
-    <!-- Floating Add Button - MOVED TO TOP RIGHT (Z-INDEX 1000) -->
+    <!-- Floating Add Button - TOP RIGHT (Z-INDEX 1000) -->
     <button id="add-pin-btn" class="fixed top-6 right-6 p-4 bg-indigo-600 text-white rounded-full shadow-xl hover:bg-indigo-700 transition duration-300 transform hover:scale-105 z-[1000] focus:outline-none focus:ring-4 focus:ring-indigo-300">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -127,7 +126,7 @@
         
         setLogLevel('Debug');
 
-        // --- START: FIREBASE CONFIGURATION ---
+        // --- START: FIREBASE CONFIGURATION (Must be defined before initFirebase) ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
 
         const defaultFirebaseConfig = {
@@ -138,11 +137,11 @@
             messagingSenderId: "1234567890",
             appId: "1:1234567890:web:localwebid"
         };
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+        const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         // --- END: FIREBASE CONFIGURATION ---
 
-        // Initialize App and Services
+        // Global State Variables
         let app;
         let db;
         let auth;
@@ -160,7 +159,7 @@
             marker: null,
         };
         
-        let isMapInitialized = false;
+        let isAppInitialized = false;
 
         // --- UI STATUS UPDATER ---
         function updateStatus(message, colorClass) {
@@ -174,27 +173,33 @@
 
         async function initFirebase() {
             try {
+                // 1. Initialize services
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
                 updateStatus('Authenticating...', 'bg-indigo-500');
-
+                
+                // 2. Perform Sign In
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
                     await signInAnonymously(auth);
                 }
                 
+                // 3. Set up Auth State Listener and subsequent app flow
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         currentUserId = user.uid;
                         document.getElementById('user-id-display').textContent = currentUserId;
                         document.getElementById('app-id-display').textContent = appId;
                         
-                        if (!isMapInitialized) {
+                        if (!isAppInitialized) {
+                            // Once user is confirmed, initialize everything else
                             initMap();
                             startDataListener();
+                            attachEventListeners();
+                            isAppInitialized = true;
                         }
                     } else {
                         updateStatus('Sign In Failed', 'bg-red-500');
@@ -202,7 +207,8 @@
                 });
 
             } catch (error) {
-                console.error("Error during Firebase initialization or sign-in:", error);
+                // Critical Catch Block: Logs the error causing the load failure
+                console.error("CRITICAL ERROR: Firebase Initialization Failed.", error);
                 document.getElementById('loading-message').textContent = 'Initialization Failed. Check console.';
                 updateStatus('Initialization Error', 'bg-red-500');
             }
@@ -211,8 +217,6 @@
         // --- MAP INITIALIZATION ---
 
         function initMap() {
-            if (isMapInitialized) return;
-
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     const lat = position.coords.latitude;
@@ -225,8 +229,6 @@
                 },
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
-            
-            isMapInitialized = true;
         }
         
         function setupLeafletMap(lat, lng) {
@@ -248,7 +250,7 @@
             updateStatus('Map & Database Ready', 'bg-green-600');
         }
         
-        // --- MODAL HANDLING ---
+        // --- MODAL HANDLING (Unchanged) ---
 
         function openModal(pinData = null) {
             const modal = document.getElementById('pin-modal');
@@ -259,7 +261,6 @@
             const title = document.getElementById('modal-title');
             const deleteBtn = document.getElementById('delete-pin-btn');
 
-            // Reset form fields
             nameInput.value = '';
             statusSelect.value = 'Watching';
             notesTextarea.value = '';
@@ -268,7 +269,6 @@
             title.textContent = 'New Location Watch';
 
             if (pinData) {
-                // Populate fields for editing existing pin
                 title.textContent = 'Edit Watch Location';
                 pinIdInput.value = pinData.id;
                 nameInput.value = pinData.name || '';
@@ -306,10 +306,9 @@
             }, 300);
         }
 
-        // --- FIREBASE CRUD OPERATIONS ---
+        // --- FIREBASE CRUD OPERATIONS (Unchanged) ---
         
         function getPinCollectionRef() {
-            // Path: /artifacts/{appId}/users/{userId}/pins
             return collection(db, `artifacts/${appId}/users/${currentUserId}/pins`);
         }
 
@@ -364,7 +363,7 @@
             }
         }
 
-        // --- REAL-TIME DATA LISTENER ---
+        // --- REAL-TIME DATA LISTENER (Unchanged) ---
 
         function startDataListener() {
             if (!currentUserId || !db) return;
@@ -391,7 +390,7 @@
             });
         }
         
-        // --- MARKER RENDERING ---
+        // --- MARKER RENDERING (Unchanged) ---
         
         function getStatusColor(status) {
             switch(status) {
@@ -486,7 +485,6 @@
 
             addButton.addEventListener('click', (e) => {
                 e.stopPropagation(); 
-                console.log("Floating Add Button clicked. Attempting to open modal.");
                 
                 if (!map) {
                     console.error("Map object is not initialized yet. Cannot get center.");
@@ -503,10 +501,9 @@
             });
         }
 
-        // Set up the app initialization on window load
+        // Start the application initialization chain
         window.onload = function () {
             initFirebase();
-            attachEventListeners(); // Attach event listeners immediately after window loads
         }
 
     </script>
