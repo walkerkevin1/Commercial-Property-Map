@@ -37,6 +37,32 @@
         .leaflet-grab { cursor: grab !important; }
         .leaflet-container { cursor: grab !important; }
         .leaflet-dragging .leaflet-grab { cursor: grabbing !important; }
+        
+        /* Custom map pin icon styles */
+        .custom-temp-icon {
+            animation: bounce 1s infinite alternate;
+        }
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-10px); }
+        }
+
+        /* Manual Pin Drop Mode Styles */
+        .manual-drop-mode .leaflet-container {
+            cursor: crosshair !important;
+        }
+        .manual-drop-mode #map::after {
+            content: "+";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 40px;
+            color: #DC2626; /* Red */
+            pointer-events: none; /* Allows clicks to pass through */
+            z-index: 999;
+            text-shadow: 0 0 5px white;
+        }
     </style>
 </head>
 <body class="bg-gray-50 font-sans antialiased overflow-hidden">
@@ -49,14 +75,34 @@
 
     <!-- Main Map Container -->
     <div id="map"></div>
-
-    <!-- Floating Add Button - TOP RIGHT (Z-INDEX 1000) -->
-    <button id="add-pin-btn" class="fixed top-6 right-6 p-4 bg-indigo-600 text-white rounded-full shadow-xl hover:bg-indigo-700 transition duration-300 transform hover:scale-105 z-[1000] focus:outline-none focus:ring-4 focus:ring-indigo-300">
+    
+    <!-- Floating Address Search Input (Z-INDEX 1000) -->
+    <div class="fixed top-6 left-1/2 transform -translate-x-1/2 w-11/12 max-w-lg z-[1000]">
+        <div class="relative shadow-xl rounded-full overflow-hidden bg-white">
+            <input type="text" id="address-search-input" placeholder="Search address to place a pin..." class="w-full p-3 pl-12 border-none focus:ring-indigo-500 focus:border-indigo-500">
+            <!-- Added ID to button and removed inline onclick -->
+            <button id="search-btn" class="absolute inset-y-0 right-0 px-4 bg-indigo-500 text-white hover:bg-indigo-600 transition duration-150">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </button>
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z" />
+                </svg>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Manual Pin Drop Button (Top Right) -->
+    <button id="manual-pin-btn" class="fixed top-6 right-6 p-3 bg-red-500 text-white rounded-lg shadow-xl hover:bg-red-600 transition duration-150 z-[1000] flex items-center space-x-2">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z" />
         </svg>
+        <span class="hidden sm:inline">Manual Pin</span>
     </button>
 
+    
     <!-- Pin Detail Modal (Z-Index 50) -->
     <div id="pin-modal" class="modal-backdrop fixed inset-0 hidden items-center justify-center z-50 transition-opacity duration-300">
         <div class="bg-white rounded-xl overflow-hidden card-shadow w-11/12 max-w-lg mx-auto transform transition-transform duration-300 scale-95 opacity-0">
@@ -74,7 +120,7 @@
                 <input type="hidden" id="pin-id">
                 
                 <div>
-                    <label for="property-name" class="block text-sm font-medium text-gray-700 mb-1">Property Name / Address</label>
+                    <label for="property-name" class="block text-sm font-medium text-gray-700 mb-1">Property Name / Address (Lat: <span id="modal-lat"></span>, Lng: <span id="modal-lng"></span>)</label>
                     <input type="text" id="property-name" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" placeholder="E.g., 123 Main St - Corner Lot">
                 </div>
 
@@ -126,7 +172,7 @@
         
         setLogLevel('Debug');
 
-        // --- START: FIREBASE CONFIGURATION (Must be defined before initFirebase) ---
+        // --- START: FIREBASE CONFIGURATION ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
 
         const defaultFirebaseConfig = {
@@ -148,9 +194,12 @@
         let map;
         let currentUserId = null;
         let markers = {}; 
+        let tempMarker = null; // New temporary marker for new/searched locations
+        let isManualDropMode = false; // New state for manual pin mode
 
-        const DEFAULT_LAT = 34.0522; 
+        const DEFAULT_LAT = 34.0522; // Los Angeles
         const DEFAULT_LNG = -118.2437; 
+        const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=';
 
         let currentMarkerData = {
             id: null,
@@ -195,7 +244,6 @@
                         document.getElementById('app-id-display').textContent = appId;
                         
                         if (!isAppInitialized) {
-                            // Once user is confirmed, initialize everything else
                             initMap();
                             startDataListener();
                             attachEventListeners();
@@ -207,7 +255,6 @@
                 });
 
             } catch (error) {
-                // Critical Catch Block: Logs the error causing the load failure
                 console.error("CRITICAL ERROR: Firebase Initialization Failed.", error);
                 document.getElementById('loading-message').textContent = 'Initialization Failed. Check console.';
                 updateStatus('Initialization Error', 'bg-red-500');
@@ -243,6 +290,9 @@
                 attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             }).addTo(map);
             
+            // Initial map click listener (always active)
+            map.on('click', onMapClick);
+
             // Remove loading overlay and update status
             const overlay = document.getElementById('loading-overlay');
             overlay.classList.add('opacity-0');
@@ -250,7 +300,115 @@
             updateStatus('Map & Database Ready', 'bg-green-600');
         }
         
-        // --- MODAL HANDLING (Unchanged) ---
+        // --- ADDRESS SEARCH (GEOCODING) ---
+        // Expose globally so it can be called by the event listener 
+        window.searchAddress = async function() { 
+            const query = document.getElementById('address-search-input').value.trim();
+            if (!query) return;
+            
+            updateStatus('Searching...', 'bg-indigo-500');
+
+            // Exit manual mode if searching
+            setManualDropMode(false);
+
+            try {
+                const searchUrl = NOMINATIM_URL + encodeURIComponent(query);
+                console.log("Nominatim Query URL:", searchUrl); // Log the full URL
+                const response = await fetch(searchUrl);
+                if (!response.ok) throw new Error("Search API failed with status: " + response.status);
+
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lng = parseFloat(result.lon);
+                    
+                    map.setView([lat, lng], 15);
+                    
+                    // Automatically drop a temporary pin and open the modal
+                    // Pass the display name of the result to pre-fill the input
+                    onMapClick({ latlng: { lat: lat, lng: lng } }, result.display_name); 
+                    updateStatus('Pin placed from search', 'bg-green-600');
+
+                } else {
+                    console.error("Geocoding Search: Address not found for query:", query);
+                    // Updated message to suggest simplification
+                    updateStatus('Address Not Found (Try simpler query or Manual Pin)', 'bg-yellow-500'); 
+                }
+            } catch (error) {
+                console.error("Geocoding Error:", error);
+                updateStatus('Search Error: See Console', 'bg-red-500');
+            }
+        }
+        
+        // --- MANUAL PIN DROP MODE TOGGLE ---
+        window.toggleManualPinMode = function() {
+            setManualDropMode(!isManualDropMode);
+        }
+        
+        function setManualDropMode(enabled) {
+            isManualDropMode = enabled;
+            const body = document.body;
+            const button = document.getElementById('manual-pin-btn');
+
+            if (enabled) {
+                body.classList.add('manual-drop-mode');
+                button.classList.remove('bg-red-500');
+                button.classList.add('bg-gray-700');
+                updateStatus('Click on the map to drop the pin...', 'bg-red-500');
+            } else {
+                body.classList.remove('manual-drop-mode');
+                button.classList.remove('bg-gray-700');
+                button.classList.add('bg-red-500');
+                if (isAppInitialized) {
+                     updateStatus('Map & Database Ready', 'bg-green-600');
+                }
+            }
+        }
+
+        // --- MAP CLICK HANDLER ---
+        function onMapClick(e, address = '') {
+            if (e.latlng) {
+                // If in manual mode, drop the pin at the center of the crosshair
+                if (isManualDropMode) {
+                    // In manual mode, the coordinates are based on the click event (e.latlng)
+                    setManualDropMode(false); // Exit mode after click
+                    // Don't need to pass an address as the user is visually dropping it
+                } 
+                // If not in manual mode, this call came from the search function, or a normal background map click
+                // and the behavior is the same: drop a temp pin and open the modal.
+
+                removeTempMarker();
+                
+                currentMarkerData.lat = e.latlng.lat;
+                currentMarkerData.lng = e.latlng.lng;
+                currentMarkerData.id = null; // Ensure we are creating a new pin
+
+                // Create a temporary, bouncing marker
+                const tempIcon = L.divIcon({
+                    className: 'custom-temp-icon',
+                    html: `<div style="background-color: #EF4444; border-color: white; transform: rotate(45deg); border-width: 3px; position: relative; bottom: 10px;" class="w-5 h-5 rounded-full shadow-lg flex items-center justify-center text-white font-bold">
+                            <svg class="h-4 w-4 transform -rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.899A5.82 5.82 0 0110 18V8a2 2 0 014 0v10l3.657-3.657a1 1 0 011.414 1.414z"/>
+                            </svg>
+                           </div>`,
+                    iconAnchor: [12, 24],
+                });
+                tempMarker = L.marker([e.latlng.lat, e.latlng.lng], { icon: tempIcon }).addTo(map);
+
+                openModal({ name: address, lat: e.latlng.lat, lng: e.latlng.lng });
+            }
+        }
+
+        function removeTempMarker() {
+            if (tempMarker) {
+                map.removeLayer(tempMarker);
+                tempMarker = null;
+            }
+        }
+
+        // --- MODAL HANDLING ---
 
         function openModal(pinData = null) {
             const modal = document.getElementById('pin-modal');
@@ -258,29 +416,34 @@
             const statusSelect = document.getElementById('property-status');
             const notesTextarea = document.getElementById('property-notes');
             const pinIdInput = document.getElementById('pin-id');
+            const latDisplay = document.getElementById('modal-lat');
+            const lngDisplay = document.getElementById('modal-lng');
             const title = document.getElementById('modal-title');
             const deleteBtn = document.getElementById('delete-pin-btn');
 
-            nameInput.value = '';
-            statusSelect.value = 'Watching';
-            notesTextarea.value = '';
-            pinIdInput.value = '';
+            // Reset inputs for new pin
+            nameInput.value = pinData.name || '';
+            statusSelect.value = pinData.status || 'Watching';
+            notesTextarea.value = pinData.notes || '';
+            pinIdInput.value = pinData.id || '';
             deleteBtn.classList.add('hidden');
-            title.textContent = 'New Location Watch';
 
-            if (pinData) {
+            // Set coordinates display
+            latDisplay.textContent = currentMarkerData.lat ? currentMarkerData.lat.toFixed(5) : 'N/A';
+            lngDisplay.textContent = currentMarkerData.lng ? currentMarkerData.lng.toFixed(5) : 'N/A';
+
+
+            if (pinData && pinData.id) {
                 title.textContent = 'Edit Watch Location';
-                pinIdInput.value = pinData.id;
-                nameInput.value = pinData.name || '';
-                statusSelect.value = pinData.status || 'Watching';
-                notesTextarea.value = pinData.notes || '';
                 
                 currentMarkerData.id = pinData.id;
                 currentMarkerData.lat = pinData.lat;
                 currentMarkerData.lng = pinData.lng;
+                removeTempMarker(); // If editing an existing pin, remove any temp marker
 
                 deleteBtn.classList.remove('hidden');
             } else {
+                 title.textContent = 'New Location Watch';
                  if (!currentMarkerData.lat || !currentMarkerData.lng) {
                      console.error("Attempted to open modal without valid coordinates.");
                      return;
@@ -300,23 +463,27 @@
             setTimeout(() => {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
+                
+                // Clear state after closing and remove temp marker
                 currentMarkerData.id = null;
                 currentMarkerData.lat = null;
                 currentMarkerData.lng = null;
+                removeTempMarker();
+                setManualDropMode(false); // Ensure mode is off when closing modal
+
             }, 300);
         }
 
         // --- FIREBASE CRUD OPERATIONS ---
         
         function getPinCollectionRef() {
-            // FIX: Using the public path to resolve permission errors and allow collaboration.
-            // Path: /artifacts/{appId}/public/data/pins
+            // Using the public path for shared data: /artifacts/{appId}/public/data/pins
             return collection(db, `artifacts/${appId}/public/data/pins`);
         }
 
         window.savePin = async function() {
-            if (!currentUserId || !db) {
-                console.error("Authentication or database not ready. Cannot save pin.");
+            if (!currentUserId || !db || !currentMarkerData.lat || !currentMarkerData.lng) {
+                console.error("Authentication, database, or coordinates not ready. Cannot save pin.");
                 return;
             }
 
@@ -332,7 +499,6 @@
                 lat: currentMarkerData.lat,
                 lng: currentMarkerData.lng,
                 updatedAt: new Date(),
-                // Keep userId for attribution, but data is saved to a public collection
                 userId: currentUserId 
             };
             
@@ -371,7 +537,6 @@
         function startDataListener() {
             if (!currentUserId || !db) return;
 
-            // Use the public query reference
             const pinsQuery = query(getPinCollectionRef());
 
             onSnapshot(pinsQuery, (snapshot) => {
@@ -389,13 +554,12 @@
                     }
                 });
             }, (error) => {
-                // This is the error handler that was triggered.
-                console.error("Error listening to pin changes (Permissions likely resolved by public path change):", error);
+                console.error("Error listening to pin changes (Ensure public path rules are set):", error);
                 updateStatus('Sync Error', 'bg-red-500');
             });
         }
         
-        // --- MARKER RENDERING (Unchanged) ---
+        // --- MARKER RENDERING ---
         
         function getStatusColor(status) {
             switch(status) {
@@ -479,30 +643,19 @@
             }
         }
         
-        // --- FLOATING ADD BUTTON HANDLER ---
+        // --- EVENT LISTENERS ---
         function attachEventListeners() {
-            const addButton = document.getElementById('add-pin-btn');
+            // Attach click listener to the search button
+            document.getElementById('search-btn').addEventListener('click', searchAddress); 
 
-            if (!addButton) {
-                console.error("Add Pin Button element not found in DOM.");
-                return;
-            }
+            // Attach click listener to the manual pin button
+            document.getElementById('manual-pin-btn').addEventListener('click', toggleManualPinMode);
 
-            addButton.addEventListener('click', (e) => {
-                e.stopPropagation(); 
-                
-                if (!map) {
-                    console.error("Map object is not initialized yet. Cannot get center.");
-                    updateStatus('Map Not Ready', 'bg-yellow-500');
-                    return; 
+            // Allow pressing Enter key to trigger search
+            document.getElementById('address-search-input').addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    searchAddress();
                 }
-                
-                // Use the current map center for the pin location
-                const center = map.getCenter();
-                currentMarkerData.lat = center.lat;
-                currentMarkerData.lng = center.lng;
-                currentMarkerData.id = null;
-                openModal();
             });
         }
 
