@@ -109,7 +109,8 @@
             
             <header class="p-4 bg-indigo-600 text-white flex justify-between items-center">
                 <h2 id="modal-title" class="text-xl font-bold">New Location Watch</h2>
-                <button onclick="closeModal()" class="text-white hover:text-indigo-200">
+                <!-- ADDED ID: close-modal-btn and removed inline onclick -->
+                <button id="close-modal-btn" class="text-white hover:text-indigo-200">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -142,8 +143,10 @@
             </div>
 
             <footer class="p-4 bg-gray-50 flex justify-between items-center border-t border-gray-200">
-                <button id="delete-pin-btn" onclick="deletePin()" class="text-red-600 hover:text-red-700 font-medium hidden">Delete</button>
-                <button id="save-pin-btn" onclick="savePin()" class="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 font-semibold">
+                <!-- REMOVED inline onclick="deletePin()" -->
+                <button id="delete-pin-btn" class="text-red-600 hover:text-red-700 font-medium hidden">Delete</button>
+                <!-- REMOVED inline onclick="savePin()" -->
+                <button id="save-pin-btn" class="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 font-semibold">
                     Save Location
                 </button>
             </footer>
@@ -311,7 +314,7 @@
         
         // --- ADDRESS SEARCH (GEOCODING) ---
         // Expose globally so it can be called by the event listener 
-        window.searchAddress = async function() { 
+        async function searchAddress() { // Removed window. prefix
             const query = document.getElementById('address-search-input').value.trim();
             if (!query) return;
             
@@ -350,9 +353,11 @@
                 updateStatus('Search Error: See Console', 'bg-red-500');
             }
         }
+        window.searchAddress = searchAddress; // Explicitly expose to window object
+
         
         // --- MANUAL PIN DROP MODE TOGGLE ---
-        window.toggleManualPinMode = function() {
+        function toggleManualPinMode() { // Removed window. prefix
             setManualDropMode(!isManualDropMode);
         }
         
@@ -419,7 +424,7 @@
 
         // --- MODAL HANDLING ---
 
-        function openModal(pinData = null) {
+        function openModal(pinData = null) { // Removed window. prefix
             const modal = document.getElementById('pin-modal');
             const nameInput = document.getElementById('property-name');
             const statusSelect = document.getElementById('property-status');
@@ -466,7 +471,7 @@
             }, 50); 
         }
 
-        window.closeModal = function() {
+        function closeModal() { // Removed window. prefix
             const modal = document.getElementById('pin-modal');
             modal.querySelector('div').classList.add('scale-95', 'opacity-0');
             setTimeout(() => {
@@ -490,7 +495,7 @@
             return collection(db, `artifacts/${appId}/public/data/pins`);
         }
 
-        window.savePin = async function() {
+        async function savePin() { // Removed window. prefix
             if (!currentUserId || !db || !currentMarkerData.lat || !currentMarkerData.lng) {
                 console.error("Authentication, database, or coordinates not ready. Cannot save pin.");
                 return;
@@ -525,7 +530,7 @@
             }
         }
 
-        window.deletePin = async function() {
+        async function deletePin() { // Removed window. prefix
             const pinId = document.getElementById('pin-id').value;
             if (!pinId || !db) {
                 console.error("Pin ID or database not ready for deletion.");
@@ -643,7 +648,7 @@
             }
         }
 
-        window.editPin = function(el) {
+        window.editPin = function(el) { // KEEP window. prefix as it's used in dynamically generated popup HTML
             const pinId = el.getAttribute('data-pin-id');
             const pinData = markers[pinId]?.pin;
             if (pinData) {
@@ -654,13 +659,16 @@
         
         // --- EVENT LISTENERS ---
         function attachEventListeners() {
-            // Attach click listener to the search button
+            // Primary UI Controls
             document.getElementById('search-btn').addEventListener('click', searchAddress); 
+            document.getElementById('manual-pin-btn').addEventListener('click', toggleManualPinMode); // FIXED: Manual Pin Button
 
-            // Attach click listener to the manual pin button
-            document.getElementById('manual-pin-btn').addEventListener('click', toggleManualPinMode);
-
-            // Allow pressing Enter key to trigger search
+            // Modal Controls (FIXED: Save/Delete/Close Buttons)
+            document.getElementById('close-modal-btn').addEventListener('click', closeModal); 
+            document.getElementById('save-pin-btn').addEventListener('click', savePin);
+            document.getElementById('delete-pin-btn').addEventListener('click', deletePin); 
+            
+            // Search Input 'Enter' Key
             document.getElementById('address-search-input').addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     searchAddress();
