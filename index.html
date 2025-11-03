@@ -172,18 +172,25 @@
         
         setLogLevel('Debug');
 
-        // --- START: FIREBASE CONFIGURATION ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
-
-        const defaultFirebaseConfig = {
-            apiKey: "AIzaSy_LOCAL_MOCK_KEY", 
-            authDomain: "local-app.firebaseapp.com",
-            projectId: "local-project-id",
-            storageBucket: "local-storage.appspot.com",
-            messagingSenderId: "1234567890",
-            appId: "1:1234567890:web:localwebid"
+        // ====================================================================
+        // --- CRITICAL FIX: FIREBASE CONFIGURATION FOR EXTERNAL DEPLOYMENT ---
+        // Your provided credentials have been inserted here:
+        // ====================================================================
+        const realFirebaseConfig = {
+            apiKey: "AIzaSyABT1nSD5liNMuVvAtmIw7sQAf_SJRuvCs", 
+            authDomain: "commercial-property-map.firebaseapp.com",
+            projectId: "commercial-property-map",
+            storageBucket: "commercial-property-map.firebasestorage.app",
+            messagingSenderId: "486434169699",
+            appId: "1:486434169699:web:f0bb313ced152ca36b6956"
         };
-        const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+        // ====================================================================
+
+        // Logic to determine which config to use:
+        // 1. If running in the Canvas environment, use the injected config.
+        // 2. If running externally (i.e., on GitHub Pages), use 'realFirebaseConfig'.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; 
+        const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : realFirebaseConfig;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         // --- END: FIREBASE CONFIGURATION ---
 
@@ -230,6 +237,7 @@
                 updateStatus('Authenticating...', 'bg-indigo-500');
                 
                 // 2. Perform Sign In
+                // The external version will use the 'else' block, signing in anonymously.
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -250,6 +258,7 @@
                             isAppInitialized = true;
                         }
                     } else {
+                        // This block should only hit if anonymous sign-in failed externally.
                         updateStatus('Sign In Failed', 'bg-red-500');
                     }
                 });
